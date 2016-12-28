@@ -1,6 +1,7 @@
 import logging
 import json
 import urllib2
+import time
 
 from ckan.model import Session
 from ckan.logic import get_action
@@ -64,12 +65,16 @@ class OaipmhHarvester(HarvesterBase):
 
             client.identify()  # check if identify works
             for header in self._identifier_generator(client):
-                harvest_obj = HarvestObject(
-                    guid=header.identifier(),
-                    job=harvest_job
-                )
-                harvest_obj.save()
-                harvest_obj_ids.append(harvest_obj.id)
+                # GAS 2016-12-28
+                if header.isDeleted() and self.ignore_deleted:
+                    pass
+                else:
+                    harvest_obj = HarvestObject(
+                        guid=header.identifier(),
+                        job=harvest_job
+                    )
+                    harvest_obj.save()
+                    harvest_obj_ids.append(harvest_obj.id)
         except urllib2.HTTPError, e:
             log.exception(
                 'Gather stage failed on %s (%s): %s, %s'
@@ -136,6 +141,8 @@ class OaipmhHarvester(HarvesterBase):
             self.set_spec = config_json.get('set', None)
             self.md_format = config_json.get('metadata_prefix', 'oai_dc')
             self.force_http_get = config_json.get('force_http_get', False)
+            self.ignore_deleted = config_json.get('ignore_deleted', False)
+            self.extract_groups = config_json.get('extract_groups', False)
 
         except ValueError:
             pass
@@ -220,6 +227,8 @@ class OaipmhHarvester(HarvesterBase):
         return True
 
     def _before_record_fetch(self, harvest_object):
+        # GAS 2016-12-28
+        time.sleep(1)
         pass
 
     def _after_record_fetch(self, record):
@@ -297,24 +306,27 @@ class OaipmhHarvester(HarvesterBase):
             package_dict['extras'] = extras
 
             # groups aka projects
-            groups = []
+            # GAS 2016-12-28
+            # Autoextract groups config
+            if self.extract_groups:
+                groups = []
 
-            # create group based on set
-            if content['set_spec']:
-                log.debug('set_spec: %s' % content['set_spec'])
-                groups.extend(
-                    self._find_or_create_groups(
-                        content['set_spec'],
-                        context
+                # create group based on set
+                if content['set_spec']:
+                    log.debug('set_spec: %s' % content['set_spec'])
+                    groups.extend(
+                        self._find_or_create_groups(
+                            content['set_spec'],
+                            context
+                        )
                     )
+
+                # add groups from content
+                groups.extend(
+                    self._extract_groups(content, context)
                 )
 
-            # add groups from content
-            groups.extend(
-                self._extract_groups(content, context)
-            )
-
-            package_dict['groups'] = groups
+                package_dict['groups'] = groups
 
             # allow sub-classes to add additional fields
             package_dict = self._extract_additional_fields(
