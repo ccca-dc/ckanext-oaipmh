@@ -228,7 +228,7 @@ class OaipmhHarvester(HarvesterBase):
 
     def _before_record_fetch(self, harvest_object):
         # GAS 2016-12-28
-        time.sleep(1)
+        time.sleep(4)
         pass
 
     def _after_record_fetch(self, record):
@@ -309,6 +309,7 @@ class OaipmhHarvester(HarvesterBase):
             # GAS 2016-12-28
             # Autoextract groups config
             if self.extract_groups:
+                log.debug(self.extract_groups)
                 groups = []
 
                 # create group based on set
@@ -362,10 +363,10 @@ class OaipmhHarvester(HarvesterBase):
         }
 
     def _extract_author(self, content):
-        return ', '.join(content['creator'])
+        return '; '.join(content['creator'])
 
     def _extract_license_id(self, content):
-        return ', '.join(content['rights'])
+        return '; '.join(content['rights'])
 
     def _extract_tags_and_extras(self, content):
         extras = []
@@ -375,17 +376,18 @@ class OaipmhHarvester(HarvesterBase):
                 continue
             if key in ['type', 'subject']:
                 if type(value) is list:
-                    tags.extend(value)
-                else:
-                    tags.extend(value.split(';'))
+                #    tags.extend(value)
+                #else:
+                    tags.extend(value[0].split(';'))
                 continue
             if value and type(value) is list:
                 value = value[0]
             if not value:
                 value = None
             extras.append((key, value))
-
+        log.debug(tags)
         tags = [munge_tag(tag[:100]) for tag in tags]
+        log.debug(tags)
 
         return (tags, extras)
 
@@ -404,14 +406,16 @@ class OaipmhHarvester(HarvesterBase):
         log.debug('URL of ressource: %s' % url)
         if url:
             try:
-                resource_format = content['format'][0]
+                resource_format = content['format'][0].split(',')[0]
+                resource_type = content['type'][0]
             except (IndexError, KeyError):
                 resource_format = 'HTML'
             resources.append({
                 'name': content['title'][0],
-                'resource_type': resource_format,
+                'resource_type': resource_type,
                 'format': resource_format,
-                'url': url
+                'url': url,
+                'ResourceURI': url
             })
         return resources
 
