@@ -18,6 +18,8 @@ from oaipmh.metadata import MetadataRegistry
 from metadata import oai_ddi_reader
 from metadata import oai_dc_reader
 
+import ckan.plugins.toolkit as tk
+
 log = logging.getLogger(__name__)
 
 
@@ -306,28 +308,27 @@ class OaipmhHarvester(HarvesterBase):
             package_dict['extras'] = extras
 
             # groups aka projects
-            # GAS 2016-12-28
-            # Autoextract groups config
-            if self.extract_groups:
-                log.debug(self.extract_groups)
-                groups = []
+            groups = []
 
-                # create group based on set
-                if content['set_spec']:
-                    log.debug('set_spec: %s' % content['set_spec'])
-                    groups.extend(
-                        self._find_or_create_groups(
-                            content['set_spec'],
-                            context
-                        )
+            # create group based on set
+            if content['set_spec']:
+                log.debug('set_spec: %s' % content['set_spec'])
+                groups.extend(
+                    self._find_or_create_groups(
+                        content['set_spec'],
+                        context
                     )
+                )
 
+            # GAS 2016-12-28
+            # Autoextract groups from content
+            if self.extract_groups:
                 # add groups from content
                 groups.extend(
                     self._extract_groups(content, context)
                 )
 
-                package_dict['groups'] = groups
+            package_dict['groups'] = groups
 
             # allow sub-classes to add additional fields
             package_dict = self._extract_additional_fields(
@@ -344,6 +345,15 @@ class OaipmhHarvester(HarvesterBase):
             Session.commit()
 
             log.debug("Finished record")
+            # GAS 2017-01-13
+            log.debug("Now reorder resources into collections")
+            group_pkg_list = tk.get_action('group_package_show')(context, {'id': content['set_spec']})
+            log.debug(group_pkg_list)
+            # for pkg in group_pkg_list:
+                # if pkg['extras'].get('relation', None):
+
+
+
         except:
             log.exception('Something went wrong!')
             self._save_object_error(
@@ -374,7 +384,7 @@ class OaipmhHarvester(HarvesterBase):
         for key, value in content.iteritems():
             if key in self._get_mapping().values():
                 continue
-            if key in ['type', 'subject']:
+            if key in ['type', 'subject', 'relation']:
                 if type(value) is list:
                 #    tags.extend(value)
                 #else:
@@ -415,7 +425,6 @@ class OaipmhHarvester(HarvesterBase):
                 'resource_type': resource_type,
                 'format': resource_format,
                 'url': url,
-                'ResourceURI': url
             })
         return resources
 
@@ -430,6 +439,7 @@ class OaipmhHarvester(HarvesterBase):
     def _extract_additional_fields(self, content, package_dict):
         # This method is the ideal place for sub-classes to
         # change whatever they want in the package_dict
+        package_dict['datasetURI'] = content['identifier']
         return package_dict
 
     def _find_or_create_groups(self, groups, context):
