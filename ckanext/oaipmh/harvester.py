@@ -310,23 +310,28 @@ class OaipmhHarvester(HarvesterBase):
             # groups aka projects
             groups = []
 
-            # create group based on set
-            if content['set_spec']:
-                log.debug('set_spec: %s' % content['set_spec'])
-                groups.extend(
-                    self._find_or_create_groups(
-                        content['set_spec'],
-                        context
-                    )
-                )
-
             # GAS 2016-12-28
             # Autoextract groups from content
             if self.extract_groups:
+
+                # create group based on set
+                if content['set_spec']:
+                    log.debug('set_spec: %s' % content['set_spec'])
+                    groups.extend(
+                        self._find_or_create_groups(
+                            content['set_spec'],
+                            context
+                        )
+                    )
+
                 # add groups from content
                 groups.extend(
                     self._extract_groups(content, context)
                 )
+
+            groups.extend(
+                self._find_or_create_groups(['GlaciersAustria'], context)
+            )
 
             package_dict['groups'] = groups
 
@@ -347,10 +352,9 @@ class OaipmhHarvester(HarvesterBase):
             log.debug("Finished record")
             # GAS 2017-01-13
             log.debug("Now reorder resources into collections")
-            group_pkg_list = tk.get_action('group_package_show')(context, {'id': content['set_spec']})
-            log.debug(group_pkg_list)
-            # for pkg in group_pkg_list:
-                # if pkg['extras'].get('relation', None):
+            group_pkg_list = tk.get_action('group_package_show')(context, {'id': self.set_spec})
+            #for pkg in group_pkg_list:
+            #    if pkg['extras'].get('relation', None):
 
 
 
@@ -384,10 +388,10 @@ class OaipmhHarvester(HarvesterBase):
         for key, value in content.iteritems():
             if key in self._get_mapping().values():
                 continue
-            if key in ['type', 'subject', 'relation']:
-                if type(value) is list:
-                #    tags.extend(value)
-                #else:
+            if key in ['type', 'subject']:
+                if type(value) is list and len(value) != 1:
+                    tags.extend(value)
+                else:
                     tags.extend(value[0].split(';'))
                 continue
             if value and type(value) is list:
@@ -395,9 +399,7 @@ class OaipmhHarvester(HarvesterBase):
             if not value:
                 value = None
             extras.append((key, value))
-        log.debug(tags)
         tags = [munge_tag(tag[:100]) for tag in tags]
-        log.debug(tags)
 
         return (tags, extras)
 
