@@ -145,6 +145,7 @@ class OaipmhHarvester(HarvesterBase):
             self.force_http_get = config_json.get('force_http_get', False)
             self.ignore_deleted = config_json.get('ignore_deleted', False)
             self.extract_groups = config_json.get('extract_groups', False)
+            self.reorder_pangaea = config_json.get('reorder_pangaea', False)
 
         except ValueError:
             pass
@@ -350,13 +351,31 @@ class OaipmhHarvester(HarvesterBase):
             Session.commit()
 
             log.debug("Finished record")
+
             # GAS 2017-01-13
-            log.debug("Now reorder resources into collections")
-            group_pkg_list = tk.get_action('group_package_show')(context, {'id': self.set_spec})
-            #for pkg in group_pkg_list:
-            #    if pkg['extras'].get('relation', None):
+            if self.reorder_pangaea:
+                log.debug("Now reorder resources into collections")
+                grp_pkg_list = tk.get_action('group_package_show')(
+                                            {'id':self.set_spec,'limit':'1000'})
 
+                for pkg_dict in grp_pkg_list:
+                    pkg_id = pkg_dict['id']
+                    extras = pkg_dict['extras']
+                    resources = pkg_dict['resources']
 
+                    # Get relation from list of dictionaries
+                    relation = next((item for item in extras if item['key'] == 'relation'), None)
+                    if relation:
+                        if relation['value'].startswith('doi'):
+                            search_crit = relation['value'].split('.')[-1]
+                            print(search_crit)
+                            # Get destination package from list of packages
+                            pkg_dest = next((item for item in grp_pkg_list if item['name'].endswith(search_crit)), None)
+                            if pkg_dest and len(resources) == 1:
+                                dev.call_action('resource_change_package',{'resource_id': resources[0]['id'], 'new_package_id': pkg_dest['id']})
+                                dev.call_action('dataset_purge',{'id': pkg_id})
+                            else:
+                                print("No Collection for this relation")
 
         except:
             log.exception('Something went wrong!')
@@ -400,6 +419,8 @@ class OaipmhHarvester(HarvesterBase):
                 value = None
             extras.append((key, value))
         tags = [munge_tag(tag[:100]) for tag in tags]
+        # GAS remove tags with less than 4 characters
+        tags = [tag for tag in tags if len(tag) > 3]
 
         return (tags, extras)
 
