@@ -373,7 +373,7 @@ class OaipmhHarvester(HarvesterBase):
                             pkg_dest = next((item for item in grp_pkg_list if item['name'].endswith(search_crit)), None)
                             if pkg_dest and len(resources) == 1:
                                 dev.call_action('resource_change_package',{'resource_id': resources[0]['id'], 'new_package_id': pkg_dest['id']})
-                                dev.call_action('dataset_purge',{'id': pkg_id})
+                                dev.call_action('package_delete',{'id': pkg_id})
                             else:
                                 print("No Collection for this relation")
 
