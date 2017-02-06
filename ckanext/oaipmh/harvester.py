@@ -311,28 +311,24 @@ class OaipmhHarvester(HarvesterBase):
             # groups aka projects
             groups = []
 
+
+            # create group based on set
+            if content['set_spec']:
+                log.debug('set_spec: %s' % content['set_spec'])
+                groups.extend(
+                    self._find_or_create_groups(
+                        content['set_spec'],
+                        context
+                    )
+                )
+
             # GAS 2016-12-28
             # Autoextract groups from content
             if self.extract_groups:
-
-                # create group based on set
-                if content['set_spec']:
-                    log.debug('set_spec: %s' % content['set_spec'])
-                    groups.extend(
-                        self._find_or_create_groups(
-                            content['set_spec'],
-                            context
-                        )
-                    )
-
                 # add groups from content
                 groups.extend(
                     self._extract_groups(content, context)
                 )
-
-            groups.extend(
-                self._find_or_create_groups(['GlaciersAustria'], context)
-            )
 
             package_dict['groups'] = groups
 
