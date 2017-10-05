@@ -17,6 +17,7 @@ from oaipmh.metadata import MetadataRegistry
 
 from metadata import oai_ddi_reader
 from metadata import oai_dc_reader
+from metadata import oai_pan_reader
 
 import ckan.plugins.toolkit as tk
 
@@ -70,6 +71,14 @@ class OaipmhHarvester(HarvesterBase):
                 # GAS 2016-12-28
                 if header.isDeleted() and self.ignore_deleted:
                     pass
+                #elif any("citableWithChilds" in spec for spec in header.setSpec()):
+                elif any("citable" == spec for spec in header.setSpec()):
+                    harvest_obj = HarvestObject(
+                        guid=header.identifier(),
+                        job=harvest_job
+                    )
+                    harvest_obj.save()
+                    harvest_obj_ids.insert(0,harvest_obj.id)
                 else:
                     harvest_obj = HarvestObject(
                         guid=header.identifier(),
@@ -126,6 +135,7 @@ class OaipmhHarvester(HarvesterBase):
         registry = MetadataRegistry()
         registry.registerReader('oai_dc', oai_dc_reader)
         registry.registerReader('oai_ddi', oai_ddi_reader)
+        registry.registerReader('pan_md', oai_pan_reader)
         return registry
 
     def _set_config(self, source_config):
@@ -207,7 +217,6 @@ class OaipmhHarvester(HarvesterBase):
                 content_dict['set_spec'] = header.setSpec()
                 if metadata_modified:
                     content_dict['metadata_modified'] = metadata_modified
-                log.debug(content_dict)
                 content = json.dumps(content_dict)
             except:
                 log.exception('Dumping the metadata failed!')
@@ -271,88 +280,186 @@ class OaipmhHarvester(HarvesterBase):
 
             package_dict = {}
             content = json.loads(harvest_object.content)
-            log.debug(content)
+            #log.debug(content)
 
-            package_dict['id'] = munge_title_to_name(harvest_object.guid)
-            package_dict['name'] = package_dict['id']
+            hierarchy_level = content.get('hierarchyLevel')
+            if not hierarchy_level:
+	        log.debug('Others----------------------------------')
 
-            mapping = self._get_mapping()
+                # Special collections, but they are not listet as collection in pangaea
+                if "Glacier mass balance Vernagtferner" in content.get('title')[0] and content.get('URI')[0] not in "https://doi.org/10.1594/PANGAEA.853832":
+                    pkg_name = 'oai-pangaea-de-doi-10-1594-pangaea-853832'
+                    pkg_dict = tk.get_action('package_show')(context, {'id':pkg_name})
+	            # add resources
+	            url = self._get_possible_resource(harvest_object, content)
+	            resource_dict = self._extract_resources(url, content)[0]
+                    resource_dict['package_id'] = pkg_dict['id']
 
-            for ckan_field, oai_field in mapping.iteritems():
-                try:
-                    package_dict[ckan_field] = content[oai_field][0]
-                except (IndexError, KeyError):
-                    continue
+                    tk.get_action('resource_create')(context, resource_dict)
 
-            # add author
-            package_dict['author'] = self._extract_author(content)
+                else:
+	            package_dict['id'] = munge_title_to_name(harvest_object.guid)
+	            package_dict['name'] = package_dict['id']
 
-            # add owner_org
-            source_dataset = get_action('package_show')(
-              context,
-              {'id': harvest_object.source.id}
-            )
-            owner_org = source_dataset.get('owner_org')
-            package_dict['owner_org'] = owner_org
+	            mapping = self._get_mapping()
 
-            # add license
-            package_dict['license_id'] = self._extract_license_id(content)
+	            for ckan_field, oai_field in mapping.iteritems():
+	                try:
+	                    package_dict[ckan_field] = content[oai_field][0]
+	                except (IndexError, KeyError):
+	                    continue
 
-            # add resources
-            url = self._get_possible_resource(harvest_object, content)
-            package_dict['resources'] = self._extract_resources(url, content)
+	            # add author
+	            package_dict['author'] = self._extract_author(content)
+	            package_dict['author_email'] = self._extract_author_email(content)
 
-            # extract tags from 'type' and 'subject' field
-            # everything else is added as extra field
-            tags, extras = self._extract_tags_and_extras(content)
-            package_dict['tags'] = tags
-            package_dict['extras'] = extras
+	            # add owner_org
+	            source_dataset = get_action('package_show')(
+	              context,
+	              {'id': harvest_object.source.id}
+	            )
+	            owner_org = source_dataset.get('owner_org')
+	            package_dict['owner_org'] = owner_org
 
-            # groups aka projects
-            groups = []
+	            # add license
+	            package_dict['license_id'] = self._extract_license_id(content)
+
+	            # add resources
+	            url = self._get_possible_resource(harvest_object, content)
+	            package_dict['resources'] = self._extract_resources(url, content)
+
+	            # extract tags from 'type' and 'subject' field
+	            # everything else is added as extra field
+	            tags, extras = self._extract_tags_and_extras(content)
+	            package_dict['tags'] = tags
+	            package_dict['extras'] = extras
+
+	            # groups aka projects
+	            groups = []
+
+	            # GAS 2016-12-28
+	            # Autoextract groups from content
+	            if self.extract_groups:
+
+	                # create group based on set
+	                if content['set_spec']:
+	                    log.debug('set_spec: %s' % content['set_spec'])
+	                    groups.extend(self._find_or_create_groups(content['set_spec'], context))
+
+	                # add groups from content
+	                groups.extend(
+	                    self._extract_groups(content, context)
+	                )
+
+	            groups.extend(
+	                self._find_or_create_groups(['GlaciersAustria'], context)
+	            )
+
+	            package_dict['groups'] = groups
+
+	            # allow sub-classes to add additional fields
+	            package_dict = self._extract_additional_fields(content, package_dict, context)
+
+	            log.debug('Create/update package using dict: %s' % package_dict)
+	            self._create_or_update_package(
+	                package_dict,
+	                harvest_object
+	            )
+
+	            Session.commit()
+
+            elif hierarchy_level[0] in 'parent':
+                log.debug('Parent----------------------------------')
+	        package_dict['id'] = munge_title_to_name(harvest_object.guid)
+	        package_dict['name'] = package_dict['id']
+
+	        mapping = self._get_mapping()
+
+	        for ckan_field, oai_field in mapping.iteritems():
+	            try:
+	                package_dict[ckan_field] = content[oai_field][0]
+	            except (IndexError, KeyError):
+	                continue
+
+	        # add author
+	        package_dict['author'] = self._extract_author(content)
+	        package_dict['author_email'] = self._extract_author_email(content)
+
+	        # add owner_org
+	        source_dataset = get_action('package_show')(
+	          context,
+	          {'id': harvest_object.source.id}
+	        )
+	        owner_org = source_dataset.get('owner_org')
+	        package_dict['owner_org'] = owner_org
+
+	        # add license
+	        package_dict['license_id'] = self._extract_license_id(content)
+
+	        # add resources
+	        #url = self._get_possible_resource(harvest_object, content)
+	        #package_dict['resources'] = self._extract_resources(url, content)
+
+	        # extract tags from 'type' and 'subject' field
+	        # everything else is added as extra field
+	        tags, extras = self._extract_tags_and_extras(content)
+	        package_dict['tags'] = tags
+	        package_dict['extras'] = extras
+
+	        # groups aka projects
+	        groups = []
+
+	        # GAS 2016-12-28
+	        # Autoextract groups from content
+	        if self.extract_groups:
+
+	            # create group based on set
+	            if content['set_spec']:
+	                log.debug('set_spec: %s' % content['set_spec'])
+	                groups.extend(self._find_or_create_groups(content['set_spec'],context))
+
+	            # add groups from content
+	            groups.extend(
+	                self._extract_groups(content, context)
+	            )
+
+	        groups.extend(
+	            self._find_or_create_groups(['GlaciersAustria'], context)
+	        )
+
+	        package_dict['groups'] = groups
+
+	        # allow sub-classes to add additional fields
+	        package_dict = self._extract_additional_fields(content, package_dict, context)
+
+	        log.debug('Create/update package using dict: %s' % package_dict)
+	        self._create_or_update_package(
+	            package_dict,
+	            harvest_object
+	        )
+
+	        Session.commit()
+
+            elif hierarchy_level[0] in 'child':
+                log.debug('Child-----------------------------------')
+
+                pkg_name = 'oai-pangaea-de-doi-' + munge_title_to_name(content.get('parentURI')[0]).split('-',3)[3]
+                pkg_dict = tk.get_action('package_show')(context, {'id':pkg_name})
+	        # add resources
+	        url = self._get_possible_resource(harvest_object, content)
+	        resource_dict = self._extract_resources(url, content)[0]
+                resource_dict['package_id'] = pkg_dict['id']
+
+                tk.get_action('resource_create')(context, resource_dict)
 
 
-            # create group based on set
-            if content['set_spec']:
-                log.debug('set_spec: %s' % content['set_spec'])
-                groups.extend(
-                    self._find_or_create_groups(
-                        content['set_spec'],
-                        context
-                    )
-                )
+	    log.debug("Finished record")
 
-            # GAS 2016-12-28
-            # Autoextract groups from content
-            if self.extract_groups:
-                # add groups from content
-                groups.extend(
-                    self._extract_groups(content, context)
-                )
-
-            package_dict['groups'] = groups
-
-            # allow sub-classes to add additional fields
-            package_dict = self._extract_additional_fields(
-                content,
-                package_dict
-            )
-
-            log.debug('Create/update package using dict: %s' % package_dict)
-            self._create_or_update_package(
-                package_dict,
-                harvest_object
-            )
-
-            Session.commit()
-
-            log.debug("Finished record")
 
             # GAS 2017-01-13
             if self.reorder_pangaea:
                 log.debug("Now reorder resources into collections")
-                grp_pkg_list = tk.get_action('group_package_show')(
-                                            {'id':self.set_spec,'limit':'1000'})
+                grp_pkg_list = tk.get_action('group_package_show')(context, {'id':self.set_spec,'limit':'1000'})
 
                 for pkg_dict in grp_pkg_list:
                     pkg_id = pkg_dict['id']
@@ -368,10 +475,13 @@ class OaipmhHarvester(HarvesterBase):
                             # Get destination package from list of packages
                             pkg_dest = next((item for item in grp_pkg_list if item['name'].endswith(search_crit)), None)
                             if pkg_dest and len(resources) == 1:
-                                dev.call_action('resource_change_package',{'resource_id': resources[0]['id'], 'new_package_id': pkg_dest['id']})
-                                dev.call_action('package_delete',{'id': pkg_id})
+                                tk.get_action('resource_change_package')({'resource_id': resources[0]['id'], 'new_package_id': pkg_dest['id']})
+                                tk.get_action('package_delete')({'id': pkg_id})
                             else:
                                 print("No Collection for this relation")
+
+
+
 
         except:
             log.exception('Something went wrong!')
@@ -385,17 +495,53 @@ class OaipmhHarvester(HarvesterBase):
     def _get_mapping(self):
         return {
             'title': 'title',
-            'notes': 'description',
-            'maintainer': 'publisher',
-            'maintainer_email': 'maintainer_email',
-            'url': 'source',
+            'notes': 'abstract',
+            #'maintainer': 'publisher',
+            #'maintainer_email': 'maintainer_email',
+            'url': 'URI',
+            'iso_westBL': 'westBoundLongitude',
+            'iso_eastBL': 'eastBoundLongitude',
+            'iso_northBL': 'northBoundLatitude',
+            'iso_southBL': 'southBoundLatitude',
+            'iso_exTempStart': 'minDateTime',
+            'iso_exTempEnd': 'maxDateTime'
         }
 
     def _extract_author(self, content):
-        return '; '.join(content['creator'])
+        if self.md_format in "pan_md":
+            if "Institute" in content['lastName'][0]:
+                return content['lastName'][0]
+            else:
+                return ' '.join([content['firstName'][0], content['lastName'][0]])
+        else:
+            return '; '.join(content['creator'])
+
+    def _extract_author_email(self, content):
+        if self.md_format in "pan_md":
+            mail = content.get('eMail')
+            if not mail:
+                if content.get('lastName')[0] in "Patzelt":
+                    return u"gernot.patzelt@uibk.ac.at"
+                elif content.get('lastName')[0] in "Haeberli":
+                    return u"wilfried.haeberli@geo.uzh.ch"
+                elif content.get('lastName')[0] in "Finsterwalder":
+                    return u"ga93yos@mytum.de"
+                elif content.get('lastName')[0] in "Kay":
+                    return u"kay.helfricht@oeaw.ac.at"
+                elif content.get('lastName')[0] in "Brunner":
+                    return u"kurt.brunner@unibw-muenchen.de"
+                else:
+                    return u"info@pangaea.de"
+            else:
+                return mail[0]
+        else:
+            return ''
 
     def _extract_license_id(self, content):
-        return '; '.join(content['rights'])
+        if self.md_format in "pan_md":
+            return content.get('licenseLabel')
+        else:
+            return '; '.join(content['rights'])
 
     def _extract_tags_and_extras(self, content):
         extras = []
@@ -415,30 +561,40 @@ class OaipmhHarvester(HarvesterBase):
                 value = None
             extras.append((key, value))
         tags = [munge_tag(tag[:100]) for tag in tags]
-        # GAS remove tags with less than 4 characters
-        tags = [tag for tag in tags if len(tag) > 3]
 
         return (tags, extras)
 
     def _get_possible_resource(self, harvest_obj, content):
-        url = None
-        candidates = content['identifier']
-        candidates.append(harvest_obj.guid)
-        for ident in candidates:
-            if ident.startswith('http://') or ident.startswith('https://'):
-                url = ident
-                break
-        return url
+        if self.md_format in "pan_md":
+            url = None
+            candidates = content['URI']
+            candidates.append(harvest_obj.guid)
+            for ident in candidates:
+                if ident.startswith('http://') or ident.startswith('https://'):
+                    url = ident
+                    break
+            return url
+        else:
+            url = None
+            candidates = content['identifier']
+            candidates.append(harvest_obj.guid)
+            for ident in candidates:
+                if ident.startswith('http://') or ident.startswith('https://'):
+                    url = ident
+                    break
+            return url
 
     def _extract_resources(self, url, content):
         resources = []
         log.debug('URL of ressource: %s' % url)
         if url:
+            resource_format = 'HTML'
+            resource_type = ''
             try:
                 resource_format = content['format'][0].split(',')[0]
                 resource_type = content['type'][0]
             except (IndexError, KeyError):
-                resource_format = 'HTML'
+                pass
             resources.append({
                 'name': content['title'][0],
                 'resource_type': resource_type,
@@ -455,11 +611,28 @@ class OaipmhHarvester(HarvesterBase):
             )
         return []
 
-    def _extract_additional_fields(self, content, package_dict):
+    def _extract_additional_fields(self, content, package_dict, context):
         # This method is the ideal place for sub-classes to
         # change whatever they want in the package_dict
-        package_dict['datasetURI'] = content['identifier']
-        return package_dict
+        if self.md_format in "pan_md":
+            if not package_dict.get('notes'):
+                if not content.get('comment'):
+                    package_dict['notes'] = u"missing"
+                else:
+                    package_dict['notes'] = max(content['comment'], key=len)
+            if isinstance(package_dict['notes'],list):
+                package_dict['notes'] = package_dict['notes'].pop
+
+            package_dict['notes'] = package_dict['notes'].replace('**','^')
+
+            package_dict['maintainer'] = u"Pangaea"
+            package_dict['maintainer_email'] = u"info@pangaea.de"
+
+            package_dict['datasetURI'] = content['URI']
+	    package_dict['owner_org'] = tk.get_action('ldap_mail_org')(context, {'email':package_dict['author_email']})
+            package_dict.pop('extras')
+
+            return package_dict
 
     def _find_or_create_groups(self, groups, context):
         log.debug('Group names: %s' % groups)

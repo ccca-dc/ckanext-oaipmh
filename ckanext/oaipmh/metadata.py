@@ -12,7 +12,7 @@ oai_ddi_reader = MetadataReader(
         'series':       ('textList', 'oai_ddi:codeBook/stdyDscr/citation/serStmt/serName/text()'),  # noqa
         'type':         ('textList', 'oai_ddi:codeBook/stdyDscr/stdyInfo/sumDscr/dataKind/text()'),  # noqa
         'format':       ('textList', 'oai_ddi:codeBook/fileDscr/fileType/text()'),  # noqa
-        'identifier':   ('textList', "oai_ddi:codeBook/stdyDscr/citation/titlStmt/IDNo/text()"),  # noqa
+        'identifier':          ('textList', "oai_ddi:codeBook/stdyDscr/citation/titlStmt/IDNo/text()"),  # noqa
         'source':       ('textList', 'oai_ddi:codeBook/stdyDscr/dataAccs/setAvail/accsPlac/@URI'),  # noqa
         'language':     ('textList', 'oai_ddi:codeBook/@xml:lang'),  # noqa
         'tempCoverage': ('textList', 'oai_ddi:codeBook/stdyDscr/stdyInfo/sumDscr/timePrd/text()'),  # noqa
@@ -39,6 +39,7 @@ oai_dc_reader = MetadataReader(
         'format':           ('textList', 'oai_dc:dc/dc:format/text()'),  # noqa
         'identifier':       ('textList', 'oai_dc:dc/dc:identifier/text()'),  # noqa
         'source':           ('textList', 'oai_dc:dc/dc:source/text()'),  # noqa
+	#        'subject':          ('textList', 'oai_dc:dc/dc:subject/text()'),  # noqa
         'language':         ('textList', 'oai_dc:dc/dc:language/text()'),  # noqa
         'relation':         ('textList', 'oai_dc:dc/dc:relation/text()'),  # noqa
         'coverage':         ('textList', 'oai_dc:dc/dc:coverage/text()'),  # noqa
@@ -48,4 +49,46 @@ oai_dc_reader = MetadataReader(
     'oai_dc': 'http://www.openarchives.org/OAI/2.0/oai_dc/',
     'oai': 'http://www.openarchives.org/OAI/2.0/',
     'dc': 'http://purl.org/dc/elements/1.1/'}
+)
+
+oai_pan_reader = MetadataReader(
+    fields={
+        'lastName':          ('textList', 'md:MetaData/md:citation/md:author/md:lastName/text()'),  # noqa
+        'firstName':         ('textList', 'md:MetaData/md:citation/md:author/md:firstName/text()'),  # noqa
+        'eMail':             ('textList', 'md:MetaData/md:citation/md:author/md:eMail/text()'),  # noqa
+        'title':             ('textList', 'md:MetaData/md:citation/md:title/text()'),  # noqa
+        'URI':               ('textList', 'md:MetaData/md:citation/md:URI/text()'),  # noqa
+        'dateTime':          ('textList', 'md:MetaData/md:citation/md:dateTime/text()'),  # noqa
+        #'creator':           ('textList', 'md:MetaData/md:citation/md:author/md:lastName/text()'),  # noqa
+        'parentURI':         ('textList', 'md:MetaData/md:citation/md:parentURI/text()'),  # noqa
+        'abstract':          ('textList', 'md:MetaData/md:abstract/text()'),  # noqa
+        'westBoundLongitude':('textList', 'md:MetaData/md:extent/md:geographic/md:westBoundLongitude/text()'),  # noqa
+        'eastBoundLongitude':('textList', 'md:MetaData/md:extent/md:geographic/md:eastBoundLongitude/text()'),  # noqa
+        'northBoundLatitude':('textList', 'md:MetaData/md:extent/md:geographic/md:northBoundLatitude/text()'),  # noqa
+        'southBoundLatitude':('textList', 'md:MetaData/md:extent/md:geographic/md:southBoundLatitude/text()'),  # noqa
+        'minDateTime':       ('textList', 'md:MetaData/md:extent/md:temporal/md:minDateTime/text()'),  # noqa
+        'maxDateTime':       ('textList', 'md:MetaData/md:extent/md:temporal/md:maxDateTime/text()'),  # noqa
+        'licenseLabel':      ('textList', 'md:MetaData/md:license/md:label/text()'),  # noqa
+        'comment':           ('textList', 'md:MetaData/md:comment/text()'),  # noqa
+        'mimeType':          ('textList', "md:MetaData/md:technicalInfo/md:entry[@key='mimeType']/@value"),  # noqa
+        'hierarchyLevel':    ('textList', "md:MetaData/md:technicalInfo/md:entry[@key='hierarchyLevel']/@value"),  # noqa
+
+#        'subject':          ('textList', 'oai_dc:dc/dc:subject/text()'),  # noqa
+#        'description':      ('textList', 'oai_dc:dc/dc:description/text()'),  # noqa
+#        'publisher':        ('textList', 'oai_dc:dc/dc:publisher/text()'),  # noqa
+#        'maintainer_email': ('textList', 'oai_dc:dc/oai:maintainer_email/text()'),  # noqa
+#        'contributor':      ('textList', 'oai_dc:dc/dc:contributor/text()'),  # noqa
+#        'date':             ('textList', 'oai_dc:dc/dc:date/text()'),  # noqa
+#        'type':             ('textList', 'oai_dc:dc/dc:type/text()'),  # noqa
+#        'format':           ('textList', 'oai_dc:dc/dc:format/text()'),  # noqa
+#        'identifier':       ('textList', 'oai_dc:dc/dc:identifier/text()'),  # noqa
+#        'source':           ('textList', 'oai_dc:dc/dc:source/text()'),  # noqa
+#        'language':         ('textList', 'oai_dc:dc/dc:language/text()'),  # noqa
+#        'relation':         ('textList', 'oai_dc:dc/dc:relation/text()'),  # noqa
+#        'coverage':         ('textList', 'oai_dc:dc/dc:coverage/text()'),  # noqa
+#        'rights':           ('textList', 'oai_dc:dc/dc:rights/text()')  # noqa
+    },
+    namespaces={
+    'md': 'http://www.pangaea.de/MetaData',
+    'oai': 'http://www.openarchives.org/OAI/2.0/' }
 )
